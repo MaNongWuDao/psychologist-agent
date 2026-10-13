@@ -1,307 +1,332 @@
-<template>
-  <McLayout class="container">
-    <McHeader
-      :title="'MateChat'"
-      :logoImg="'https://matechat.gitcode.com/logo.svg'"
-    >
-      <template #operationArea>
-        <div class="operations">
-          <i class="icon-helping"></i>
-        </div>
-      </template>
-    </McHeader>
-    <McLayoutContent
-      v-if="startPage"
-      style="
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 12px;
-      "
-    >
-      <McIntroduction
-        :logoImg="'https://matechat.gitcode.com/logo2x.svg'"
-        :title="'MateChat'"
-        :subTitle="'Hi，欢迎使用 MateChat'"
-        :description="description"
-      ></McIntroduction>
-      <McPrompt
-        :list="introPrompt.list"
-        :direction="introPrompt.direction"
-        class="intro-prompt"
-        @itemClick="onSubmit($event.label)"
-      ></McPrompt>
-    </McLayoutContent>
-    <McLayoutContent class="content-container" v-else>
-      <template v-for="(msg, idx) in messages" :key="idx">
-        <McBubble
-          v-if="msg.from === 'user'"
-          :content="msg.content"
-          :align="'right'"
-          :avatarConfig="{
-            imgSrc: 'https://matechat.gitcode.com/png/demo/userAvatar.svg',
-          }"
-        >
-        </McBubble>
-        <McBubble
-          v-else
-          :content="msg.content"
-          :avatarConfig="{ imgSrc: 'https://matechat.gitcode.com/logo.svg' }"
-          :loading="msg.loading"
-        >
-        </McBubble>
-      </template>
-    </McLayoutContent>
-    <div class="shortcut" style="display: flex; align-items: center; gap: 8px">
-      <McPrompt
-        v-if="!startPage"
-        :list="simplePrompt"
-        :direction="'horizontal'"
-        style="flex: 1"
-        @itemClick="onSubmit($event.label)"
-      ></McPrompt>
-      <Button
-        style="margin-left: auto"
-        icon="add"
-        shape="circle"
-        title="新建对话"
-        size="md"
-        @click="newConversation"
-      />
-    </div>
-    <McLayoutSender>
-      <McInput
-        :value="inputValue"
-        :maxLength="2000"
-        @change="(e) => (inputValue = e)"
-        @submit="onSubmit"
-      >
-        <template #extra>
-          <div class="input-foot-wrapper">
-            <div class="input-foot-left">
-              <span v-for="(item, index) in inputFootIcons" :key="index">
-                <i :class="item.icon"></i>
-                {{ item.text }}
-              </span>
-              <span class="input-foot-dividing-line"></span>
-              <span class="input-foot-maxlength"
-                >{{ inputValue.length }}/2000</span
-              >
-            </div>
-            <div class="input-foot-right">
-              <Button
-                icon="op-clearup"
-                shape="round"
-                :disabled="!inputValue"
-                @click="inputValue = ''"
-                ><span class="demo-button-content">清空输入</span></Button
-              >
-            </div>
-          </div>
-        </template>
-      </McInput>
-    </McLayoutSender>
-  </McLayout>
-</template>
-
 <script setup lang="ts">
-import { ref } from "vue";
-import { Button } from "vue-devui/button";
-import "vue-devui/button/style.css";
-import { mateChatToLangChainMsgs } from "@/utils/index";
+import { computed, onMounted, ref } from 'vue';
+import {
+  McBubble,
+  McHeader,
+  McInput,
+  McIntroduction,
+  McLayout,
+  McLayoutContent,
+  McLayoutSender,
+  McMarkdownCard,
+  McPrompt,
+} from '@matechat/core';
+import CrisisBanner from './CrisisBanner.vue';
+import SessionSidebar from './SessionSidebar.vue';
+import { counselorApi, streamChat, type ActiveStream } from '../services/counselor';
+import {
+  PHASE_LABEL,
+  RISK_LABEL,
+  type ChatMessage,
+  type RiskLevel,
+  type RuntimeInfo,
+  type SessionSummary,
+} from '../types';
 
-const description = [
-  "MateChat 可以辅助研发人员编码、查询知识和相关作业信息、编写文档等。",
-  "作为AI模型，MateChat 提供的答案可能不总是确定或准确的，但您的反馈可以帮助 MateChat 做的更好。",
-];
-const introPrompt = {
-  direction: "horizontal",
-  list: [
-    {
-      value: "quickSort",
-      label: "帮我写一个快速排序",
-      iconConfig: { name: "icon-info-o", color: "#5e7ce0" },
-      desc: "使用 js 实现一个快速排序",
-    },
-    {
-      value: "helpMd",
-      label: "你可以帮我做些什么？",
-      iconConfig: { name: "icon-star", color: "rgb(255, 215, 0)" },
-      desc: "了解当前大模型可以帮你做的事",
-    },
-    {
-      value: "bindProjectSpace",
-      label: "怎么绑定项目空间",
-      iconConfig: { name: "icon-priority", color: "#3ac295" },
-      desc: "如何绑定云空间中的项目",
-    },
-  ],
-};
-const simplePrompt = [
+const STARTERS: Array<{ value: string; label: string; desc: string }> = [
   {
-    value: "quickSort",
-    iconConfig: { name: "icon-info-o", color: "#5e7ce0" },
-    label: "帮我写一个快速排序",
+    value: 'starter-sleep',
+    label: '最近总是失眠，白天也没精神',
+    desc: '睡眠与情绪',
   },
   {
-    value: "helpMd",
-    iconConfig: { name: "icon-star", color: "rgb(255, 215, 0)" },
-    label: "你可以帮我做些什么？",
+    value: 'starter-work',
+    label: '工作压力大到喘不过气',
+    desc: '职场压力',
+  },
+  {
+    value: 'starter-relation',
+    label: '和家人相处总是吵架，很累',
+    desc: '亲密关系',
+  },
+  {
+    value: 'starter-self',
+    label: '我不知道自己想要什么',
+    desc: '自我探索',
   },
 ];
-const startPage = ref(true);
-const inputValue = ref("");
-const inputFootIcons = [
-  { icon: "icon-at", text: "智能体" },
-  { icon: "icon-standard", text: "词库" },
-  { icon: "icon-add", text: "附件" },
-];
 
-const messages = ref<any[]>([]);
+const sessions = ref<SessionSummary[]>([]);
+const activeSessionId = ref<string | null>(null);
+const runtime = ref<RuntimeInfo | null>(null);
+const messages = ref<ChatMessage[]>([]);
+const inputValue = ref('');
+const streaming = ref(false);
+const loadingHistory = ref(false);
+const notice = ref('');
+const crisisDismissed = ref(false);
+const railOpen = ref(false);
 
-const newConversation = () => {
-  startPage.value = true;
-  messages.value = [];
-};
+let activeStream: ActiveStream | null = null;
 
-const onSubmit = async (evt) => {
-  inputValue.value = "";
-  startPage.value = false;
+const activeSession = computed(
+  () => sessions.value.find((item) => item.id === activeSessionId.value) ?? null,
+);
 
-  console.log(messages.value);
+const latestRisk = computed<RiskLevel>(() => {
+  const last = messages.value.at(-1);
+  return last?.riskLevel ?? activeSession.value?.riskLevel ?? 'none';
+});
 
-  const res = await fetch("http://localhost:3000/api/counselor/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      question: evt,
-      history: mateChatToLangChainMsgs(messages.value),
-    }),
+const showCrisisBanner = computed(
+  () => latestRisk.value === 'high' && messages.value.length > 0 && !crisisDismissed.value,
+);
+
+async function refreshSessions(): Promise<void> {
+  sessions.value = await counselorApi.listSessions();
+}
+
+async function bootstrap(): Promise<void> {
+  try {
+    runtime.value = await counselorApi.getRuntime();
+    await refreshSessions();
+    if (sessions.value.length) {
+      await openSession(sessions.value[0].id);
+    }
+  } catch (error) {
+    notice.value = `初始化失败：${(error as Error).message}`;
+  }
+}
+
+async function openSession(id: string): Promise<void> {
+  if (streaming.value) {
+    return;
+  }
+  loadingHistory.value = true;
+  notice.value = '';
+  try {
+    const detail = await counselorApi.getSession(id);
+    activeSessionId.value = detail.id;
+    crisisDismissed.value = false;
+    messages.value = detail.messages.map((message) => ({
+      id: String(message.id),
+      from: message.role,
+      content: message.content,
+      riskLevel: message.riskLevel,
+      phase: message.phase,
+      streaming: false,
+    }));
+  } catch (error) {
+    notice.value = `加载会话失败：${(error as Error).message}`;
+  } finally {
+    loadingHistory.value = false;
+  }
+}
+
+async function createSession(): Promise<string | null> {
+  notice.value = '';
+  try {
+    const session = await counselorApi.createSession();
+    sessions.value = [session, ...sessions.value];
+    activeSessionId.value = session.id;
+    messages.value = [];
+    crisisDismissed.value = false;
+    return session.id;
+  } catch (error) {
+    notice.value = `新建会话失败：${(error as Error).message}`;
+    return null;
+  }
+}
+
+async function removeSession(id: string): Promise<void> {
+  try {
+    await counselorApi.deleteSession(id);
+    sessions.value = sessions.value.filter((item) => item.id !== id);
+    if (activeSessionId.value === id) {
+      activeSessionId.value = null;
+      messages.value = [];
+    }
+  } catch (error) {
+    notice.value = `删除会话失败：${(error as Error).message}`;
+  }
+}
+
+async function send(raw: string): Promise<void> {
+  const content = raw.trim();
+  if (!content || streaming.value) {
+    return;
+  }
+
+  const sessionId = activeSessionId.value ?? (await createSession());
+  if (!sessionId) {
+    return;
+  }
+
+  notice.value = '';
+  crisisDismissed.value = false;
+  inputValue.value = '';
+
+  messages.value.push({
+    id: `local-user-${Date.now()}`,
+    from: 'user',
+    content,
+    riskLevel: 'none',
+    phase: 'intake',
+    streaming: false,
   });
   messages.value.push({
-    from: "user",
-    content: evt,
+    id: `local-reply-${Date.now()}`,
+    from: 'assistant',
+    content: '',
+    riskLevel: 'none',
+    phase: 'intake',
+    streaming: true,
   });
-  if (!res.body) return;
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
 
-  let buffer = ""; // 关键：增加缓冲区，解决跨chunk断行问题
-  const aiMsg = {
-    id: Date.now().toString(),
-    from: "model",
-    content: "",
-    loading: true,
-  };
-  messages.value.push(aiMsg);
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    // 追加到缓冲区
-    buffer += decoder.decode(value, { stream: true });
-    // 按换行分割
-    const lines = buffer.split("\n");
-    // 最后一行留在 buffer，防止被截断
-    buffer = lines.pop() || "";
+  // 必须从 ref 数组里取回元素，拿到的才是响应式代理，
+  // 否则下面按 token 累加时不会触发重渲染。
+  const reply = messages.value[messages.value.length - 1];
+  streaming.value = true;
 
-    for (const line of lines) {
-      const trimLine = line.trim();
-      if (!trimLine || !trimLine.startsWith("data: ")) continue;
-      const dataStr = trimLine.replace("data: ", "");
-      if (dataStr === "[DONE]") continue;
-      try {
-        const json = JSON.parse(dataStr);
-        aiMsg.content += json.token;
-        aiMsg.loading = false;
-        messages.value = [...messages.value];
-        console.log(aiMsg.content);
-      } catch (e) {
-        // 单独捕获JSON解析异常，避免单条坏数据中断整个流
-        console.warn("parse sse line error", e, dataStr);
-      }
-    }
+  activeStream = streamChat(sessionId, content, {
+    onMeta: (event) => {
+      reply.riskLevel = event.riskLevel;
+      reply.phase = event.phase;
+    },
+    onToken: (token) => {
+      reply.content += token;
+    },
+    onDone: (event) => {
+      reply.riskLevel = event.riskLevel;
+      reply.phase = event.phase;
+    },
+    onError: (message) => {
+      notice.value = `对话中断：${message}`;
+    },
+  });
+
+  await activeStream.completion;
+  activeStream = null;
+  reply.streaming = false;
+  streaming.value = false;
+
+  try {
+    await refreshSessions();
+  } catch {
+    // 会话列表刷新失败不影响本轮对话
   }
+}
 
-  //   messages.value.push({
-  //       from: "model",
-  //     });
-  // // 用户发送消息
-  // messages.value.push({
-  //   from: "user",
-  //   content: evt,
-  // });
-  // setTimeout(() => {
-  //   // 模型返回消息
-  //   messages.value.push({
-  //     from: "model",
-  //     content: evt,
-  //   });
-  // }, 200);
-};
+function stop(): void {
+  activeStream?.abort();
+}
+
+function useStarter(label: string): void {
+  void send(label);
+}
+
+function selectSession(id: string): void {
+  railOpen.value = false;
+  void openSession(id);
+}
+
+onMounted(() => {
+  void bootstrap();
+});
 </script>
 
-<style>
-.container {
-  width: 1000px;
-  margin: 20px auto;
-  height: calc(100vh - 82px);
-  padding: 20px;
-  gap: 8px;
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 16px;
-}
+<template>
+  <div class="app-shell">
+    <SessionSidebar
+      :class="{ 'is-open': railOpen }"
+      :sessions="sessions"
+      :active-id="activeSessionId"
+      :runtime="runtime"
+      :disabled="streaming"
+      @create="createSession"
+      @select="selectSession"
+      @remove="removeSession"
+    />
+    <div v-if="railOpen" class="rail-backdrop" @click="railOpen = false" />
 
-.content-container {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow: auto;
-}
+    <McLayout class="chat-column">
+      <McHeader class="chat-header" :title="activeSession?.title ?? '新的对话'">
+        <template #operationArea>
+          <div class="header-chips">
+            <d-button
+              class="rail-toggle"
+              variant="text"
+              size="sm"
+              icon="nav-expand"
+              title="会话列表"
+              @click="railOpen = !railOpen"
+            />
+            <span class="chip" :data-tone="latestRisk">
+              {{ RISK_LABEL[latestRisk] }}
+            </span>
+            <span v-if="activeSession" class="chip ghost">
+              {{ PHASE_LABEL[activeSession.phase] }}
+            </span>
+          </div>
+        </template>
+      </McHeader>
 
-.input-foot-wrapper {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  margin-right: 8px;
+      <McLayoutContent class="chat-content" :auto-scroll="true" :show-scroll-arrow="true">
+        <div v-if="loadingHistory" class="chat-placeholder">正在加载对话…</div>
 
-  .input-foot-left {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+        <div v-else-if="!messages.length" class="chat-welcome">
+          <McIntroduction
+            :title="'你好，我在这里'"
+            :subTitle="'你可以从任何想说的地方开始'"
+            :description="[
+              '我会先听，再和你一起把混乱的部分慢慢理清。',
+              '这里不是诊断，也不替代面诊；你可以放心地慢慢说。',
+            ]"
+          />
+          <McPrompt
+            class="chat-starters"
+            direction="horizontal"
+            :list="STARTERS"
+            @itemClick="useStarter($event.label)"
+          />
+        </div>
 
-    span {
-      font-size: 14px;
-      line-height: 18px;
-      color: #252b3a;
-      cursor: pointer;
-    }
+        <div v-else class="chat-thread">
+          <div
+            v-for="message in messages"
+            :key="message.id"
+            class="thread-row"
+            :data-from="message.from"
+          >
+            <McBubble
+              :align="message.from === 'user' ? 'right' : 'left'"
+              :variant="message.from === 'user' ? 'filled' : 'bordered'"
+              :loading="message.streaming && !message.content"
+              :avatar-config="
+                message.from === 'user'
+                  ? { name: '我', isRound: true }
+                  : { name: '咨询师', isRound: true }
+              "
+            >
+              <template #default>
+                <McMarkdownCard :content="message.content" />
+                <span v-if="message.streaming && message.content" class="typing-caret" />
+              </template>
+              <template v-if="message.riskLevel !== 'none'" #bottom>
+                <span class="bubble-tag" :data-tone="message.riskLevel">
+                  {{ RISK_LABEL[message.riskLevel] }}
+                </span>
+              </template>
+            </McBubble>
+          </div>
+        </div>
+      </McLayoutContent>
 
-    .input-foot-dividing-line {
-      width: 1px;
-      height: 14px;
-      background-color: #d7d8da;
-    }
+      <CrisisBanner v-if="showCrisisBanner" @dismiss="crisisDismissed = true" />
 
-    .input-foot-maxlength {
-      font-size: 14px;
-      color: #71757f;
-    }
-  }
+      <p v-if="notice" class="chat-notice">{{ notice }}</p>
 
-  .input-foot-right {
-    .demo-button-content {
-      font-size: 14px;
-    }
-
-    & > *:not(:first-child) {
-      margin-left: 8px;
-    }
-  }
-}
-</style>
+      <McLayoutSender class="chat-sender">
+        <McInput
+          :value="inputValue"
+          :maxLength="2000"
+          :loading="streaming"
+          placeholder="说说此刻最想被听见的那件事……"
+          @change="(value: string) => (inputValue = value)"
+          @submit="send"
+          @cancel="stop"
+        />
+      </McLayoutSender>
+    </McLayout>
+  </div>
+</template>
