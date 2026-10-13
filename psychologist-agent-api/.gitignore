@@ -1,0 +1,57 @@
+# ---------- 依赖 ----------
+/node_modules
+.pnpm-store/
+
+# ---------- 编译产物 ----------
+/dist
+/build
+*.tsbuildinfo
+
+# ---------- 日志 ----------
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# ---------- 环境变量（.env.example 需要提交） ----------
+.env
+.env.*
+!.env.example
+
+# ---------- 测试与覆盖率 ----------
+/coverage
+/.nyc_output
+
+# ---------- 编辑器与 IDE ----------
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode（保留共享配置）
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# ---------- 操作系统 ----------
+.DS_Store
+Thumbs.db
+
+# ---------- 临时文件与运行时数据 ----------
+.temp
+.tmp
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# ---------- 诊断报告 ----------
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json

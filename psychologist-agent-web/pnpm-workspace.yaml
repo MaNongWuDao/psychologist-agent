@@ -1,0 +1,6 @@
+allowBuilds:
+  vue-demi: false
+
+# 本地依赖已由该 store 链接，显式声明避免 pnpm 因 store 位置不一致而要求重装。
+# pnpm 会在此路径后追加版本号目录（v11）。
+storeDir: C:/Users/wupeihua/AppData/Local/pnpm/store

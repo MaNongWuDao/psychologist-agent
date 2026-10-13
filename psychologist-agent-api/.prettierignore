@@ -1,0 +1,13 @@
+# 构建产物与依赖不参与格式化
+dist
+build
+node_modules
+.pnpm-store
+coverage
+
+# 锁文件由包管理器生成
+pnpm-lock.yaml
+
+# 环境变量文件里可能包含密钥与自定义格式
+.env
+.env.*

@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: psychologist-agent-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: psychologist
+    ports:
+      - '5436:5432'
+    volumes:
+      - psychologist-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d psychologist']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  psychologist-pgdata:
